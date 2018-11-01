@@ -3,22 +3,64 @@
 
 'use strict';
 
-import { CancellationToken, CodeLens, CodeLensProvider, Event, EventEmitter, TextDocument } from 'vscode';
+import { languages, workspace, CancellationToken, CodeLens, CodeLensProvider, ConfigurationChangeEvent,
+         Disposable, Event, EventEmitter, TextDocument } from 'vscode';
 import { TestResourceManager } from './testResourceManager';
 import * as Commands from './Constants/commands';
+import * as Configs from './Constants/configs';
+import * as Constants from './Constants/constants';
 import { TestResult, TestStatus, TestSuite } from './Models/protocols';
 import * as FetchTestsUtility from './Utils/fetchTestUtility';
 import * as Logger from './Utils/Logger/logger';
 
-export class JUnitCodeLensProvider implements CodeLensProvider {
-    constructor(
-        private _onDidChange: EventEmitter<void>,
-        private _testCollectionStorage: TestResourceManager) {
+export class JUnitCodeLensContainer implements Disposable {
+    private _lensProvider: Disposable | undefined;
+    private _configurationEvent: Disposable;
+    private _onDidChange: EventEmitter<void>;
+    private _testCollectionStorage: TestResourceManager;
+
+    constructor(onDidChange: EventEmitter<void>, testCollectionStorage: TestResourceManager) {
+        this._onDidChange = onDidChange;
+        this._testCollectionStorage = testCollectionStorage;
+
+        const configuration = workspace.getConfiguration(Constants.JAVA_TEST_SETTINGS_CONFIGURATION);
+        const isCodeLenseEnabled = configuration.get<boolean>(Constants.ENABLE_CODE_LENS_VARIABLE);
+
+        if (isCodeLenseEnabled) {
+            this._lensProvider = languages.registerCodeLensProvider(Configs.LANGUAGE, new JUnitCodeLensProvider(this._testCollectionStorage));
+        }
+
+        this._configurationEvent = workspace.onDidChangeConfiguration((event: ConfigurationChangeEvent) =>  {
+            if (event.affectsConfiguration(Constants.JAVA_TEST_SETTINGS_CONFIGURATION)) {
+                const newConfiguration = workspace.getConfiguration(Constants.JAVA_TEST_SETTINGS_CONFIGURATION);
+                const newEnabled = newConfiguration.get<boolean>(Constants.ENABLE_CODE_LENS_VARIABLE);
+                if (newEnabled && this._lensProvider === undefined) {
+                    this._lensProvider = languages.registerCodeLensProvider(Configs.LANGUAGE,
+                        new JUnitCodeLensProvider(this._testCollectionStorage));
+                } else if (!newEnabled && this._lensProvider !== undefined) {
+                    this._lensProvider.dispose();
+                    this._lensProvider = undefined;
+                }
+            }
+        }, this);
     }
 
     get onDidChangeCodeLenses(): Event<void> {
         return this._onDidChange.event;
     }
+
+    public dispose() {
+        if (this._lensProvider !== undefined) {
+            this._lensProvider.dispose();
+        }
+        this._configurationEvent.dispose();
+        this._testCollectionStorage.dispose();
+        this._onDidChange.dispose();
+    }
+}
+
+class JUnitCodeLensProvider implements CodeLensProvider {
+    constructor(private _testCollectionStorage: TestResourceManager) { }
 
     public async provideCodeLenses(document: TextDocument, token: CancellationToken) {
         return FetchTestsUtility.fetchTests(document).then((tests: TestSuite[]) => {

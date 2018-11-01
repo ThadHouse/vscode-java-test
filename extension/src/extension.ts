@@ -3,12 +3,12 @@
 
 'use strict';
 
-import { commands, extensions, languages, window, workspace, Disposable,
+import { commands, extensions, window, workspace, Disposable,
     EventEmitter, ExtensionContext, OutputChannel, Uri, ViewColumn } from 'vscode';
 import { dispose as disposeTelemetryWrapper, initializeFromJsonFile, instrumentOperation,
     TelemetryWrapper } from 'vscode-extension-telemetry-wrapper';
 import { ClassPathManager } from './classPathManager';
-import { JUnitCodeLensProvider } from './junitCodeLensProvider';
+import { JUnitCodeLensContainer } from './junitCodeLensProvider';
 import { ProjectManager } from './projectManager';
 import { TestConfigManager } from './testConfigManager';
 import { encodeTestSuite, parseTestReportName, TestReportProvider } from './testReportProvider';
@@ -55,8 +55,8 @@ async function doActivate(_operationId: string, context: ExtensionContext): Prom
         ],
     );
     await testStatusBarItem.init(testResourceManager.refresh());
-    const codeLensProvider = new JUnitCodeLensProvider(onDidChange, testResourceManager);
-    context.subscriptions.push(languages.registerCodeLensProvider(Configs.LANGUAGE, codeLensProvider));
+    const codeLensProvider = new JUnitCodeLensContainer(onDidChange, testResourceManager);
+    context.subscriptions.push(codeLensProvider);
     const testReportProvider: TestReportProvider = new TestReportProvider(context, testResourceManager);
     context.subscriptions.push(workspace.registerTextDocumentContentProvider(TestReportProvider.scheme, testReportProvider));
     const testExplorer = new TestExplorer(context, testResourceManager);
